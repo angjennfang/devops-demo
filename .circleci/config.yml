@@ -156,3 +156,8 @@ workflows:
           result: failed
           requires:
             - deploy: failed
+      - notify:
+          name: notify-success
+          result: success
+          requires:
+            - deploy
