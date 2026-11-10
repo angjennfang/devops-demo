@@ -4,61 +4,45 @@ orbs:
   snyk: snyk/snyk@2.3.0
 
 jobs:
-  # ==========================================
-  # BUILD JOB - Compile and package
-  # ==========================================
   build:
     docker:
       - image: cimg/openjdk:21.0
-
     steps:
       - checkout
-
       - restore_cache:
           keys:
             - maven-deps-{{ checksum "pom.xml" }}
             - maven-deps-
-
       - run:
           name: Install dependencies and build
           command: |
             echo "Building the application..."
             mvn clean install -DskipTests
-
       - save_cache:
           paths:
             - ~/.m2
           key: maven-deps-{{ checksum "pom.xml" }}
-
       - persist_to_workspace:
           root: .
           paths:
             - target/*.jar
 
-              # ==========================================
-  # TEST JOB - Run automated tests
-  # ==========================================
   test:
     docker:
       - image: cimg/openjdk:21.0
-
     steps:
       - checkout
-
       - restore_cache:
           keys:
             - maven-deps-{{ checksum "pom.xml" }}
             - maven-deps-
-
       - run:
           name: Run tests
           command: |
             echo "Running tests..."
             mvn test
-
       - store_test_results:
           path: target/surefire-reports
-
       - store_artifacts:
           path: target/surefire-reports
 
@@ -77,10 +61,9 @@ jobs:
       - snyk/scan:
           severity-threshold: high
           cli-version: 1.1308.1
-          monitor-on-build:
-            false
+          monitor-on-build: false
 
-            # ==========================================
+  # ==========================================
   # SNYK_CODE JOB - Snyk Code: static analysis (SAST) of src/
   # ==========================================
   snyk_code:
@@ -92,30 +75,21 @@ jobs:
           command: code test
           severity-threshold: high
           cli-version: 1.1308.1
-          monitor-on-build:
-            false
+          monitor-on-build: false
 
-            # ==========================================
-  # PUBLISH JOB - Build and push Docker image
-  # ==========================================
   publish:
     docker:
       - image: cimg/base:stable
-
     steps:
       - checkout
-
       - attach_workspace:
           at: .
-
       - setup_remote_docker
-
       - run:
           name: Build Docker image
           command: |
             echo "Building Docker image..."
             docker build -t $DOCKER_USERNAME/devops-demo:latest .
-
       - run:
           name: Push to Docker Hub
           command: |
@@ -124,18 +98,20 @@ jobs:
             echo "Pushing image to Docker Hub..."
             docker push $DOCKER_USERNAME/devops-demo:latest
 
-  # ==========================================
-  # DEPLOY JOB - Redeploy on Render with the Render CLI
-  # ==========================================
   deploy:
     docker:
       - image: cimg/base:stable
+    environment:
+      RENDER_CLI_VERSION: "2.7.0"
     steps:
       - run:
           name: Install the Render CLI
           command: |
-            curl -fsSL https://raw.githubusercontent.com/render-oss/cli/refs/heads/main/bin/install.sh | sh
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"
+            curl -fsSL -o /tmp/render.zip \
+              "https://github.com/render-oss/cli/releases/download/v${RENDER_CLI_VERSION}/cli_${RENDER_CLI_VERSION}_linux_amd64.zip"
+            unzip -q /tmp/render.zip -d /tmp/render
+            sudo mv "/tmp/render/cli_v${RENDER_CLI_VERSION}" /usr/local/bin/render
+            render --version
       - run:
           name: Redeploy latest image on Render and wait
           command: |
@@ -143,9 +119,6 @@ jobs:
             render deploys create "$RENDER_SERVICE_ID" --wait --confirm --output text
             echo "The new version is live on Render."
 
-  # ==========================================
-  # NOTIFY JOB - Post the deployment result to Discord
-  # ==========================================
   notify:
     parameters:
       result:
@@ -168,9 +141,6 @@ jobs:
               "$DISCORD_WEBHOOK_URL"
             echo "Posted to Discord: ${MESSAGE}"
 
-  # ==========================================
-# WORKFLOW - Run jobs in sequence
-# ==========================================
 workflows:
   build_test_scan_publish_deploy:
     jobs:
