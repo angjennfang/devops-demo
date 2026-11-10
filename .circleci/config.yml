@@ -1,5 +1,8 @@
 version: 2.1
 
+orbs:
+  snyk: snyk/snyk@2.3.0
+
 jobs:
   # ==========================================
   # BUILD JOB - Compile and package
@@ -57,8 +60,40 @@ jobs:
           path: target/surefire-reports
 
       - store_artifacts:
-          path:
-            target/surefire-reports
+          path: target/surefire-reports
+
+  # ==========================================
+  # SNYK_SCAN JOB - Snyk: scan Maven dependencies
+  # ==========================================
+  snyk_scan:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-deps-{{ checksum "pom.xml" }}
+            - maven-deps-
+      - snyk/scan:
+          severity-threshold: high
+          cli-version: 1.1308.1
+          monitor-on-build:
+            false
+
+            # ==========================================
+  # SNYK_CODE JOB - Snyk Code: static analysis (SAST) of src/
+  # ==========================================
+  snyk_code:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - snyk/scan:
+          command: code test
+          severity-threshold: high
+          cli-version: 1.1308.1
+          monitor-on-build:
+            false
 
             # ==========================================
   # PUBLISH JOB - Build and push Docker image
@@ -133,14 +168,15 @@ jobs:
               "$DISCORD_WEBHOOK_URL"
             echo "Posted to Discord: ${MESSAGE}"
 
-
   # ==========================================
 # WORKFLOW - Run jobs in sequence
 # ==========================================
 workflows:
-  build_test_publish:
+  build_test_scan_publish_deploy:
     jobs:
       - build
+      - snyk_scan
+      - snyk_code
       - test:
           requires:
             - build
@@ -148,16 +184,18 @@ workflows:
           context: docker-hub
           requires:
             - test
+            - snyk_scan
+            - snyk_code
       - deploy:
           requires:
             - publish
+      - notify:
+          name: notify-success
+          result: success
+          requires:
+            - deploy: success
       - notify:
           name: notify-failure
           result: failed
           requires:
             - deploy: failed
-      - notify:
-          name: notify-success
-          result: success
-          requires:
-            - deploy
