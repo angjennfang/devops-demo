@@ -59,7 +59,7 @@ jobs:
             - maven-deps-{{ checksum "pom.xml" }}
             - maven-deps-
       - snyk/scan:
-          severity-threshold: high
+          severity-threshold: low
           cli-version: 1.1308.1
           monitor-on-build: false
 
@@ -155,6 +155,7 @@ workflows:
           requires:
             - test
             - snyk_code
+            - snyk_scan
       - deploy:
           requires:
             - publish
